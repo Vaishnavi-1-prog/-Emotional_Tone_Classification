@@ -1,0 +1,80 @@
+# Install required libraries
+!pip install openai-whisper --quiet
+!pip install pandas --quiet
+!pip install transformers --quiet
+!pip install PyPDF2 --quiet
+
+# Import necessary libraries
+import whisper
+import warnings
+import logging
+from transformers import pipeline
+from google.colab import files
+import PyPDF2
+import os
+import contextlib
+import io
+
+# Suppress warnings
+warnings.filterwarnings("ignore")
+
+# Suppress Hugging Face logs
+logging.getLogger("transformers").setLevel(logging.ERROR)
+
+# Suppress standard output temporarily
+@contextlib.contextmanager
+def suppress_stdout():
+    with io.StringIO() as stream, contextlib.redirect_stdout(stream):
+        yield
+
+# Upload PDF dataset
+print("Upload your PDF dataset:")
+uploaded_pdf = files.upload()  # Upload PDF file
+pdf_path = list(uploaded_pdf.keys())[0]  # Get the filename
+
+# Function to extract text from PDF
+def extract_text_from_pdf(pdf_path):
+    with open(pdf_path, 'rb') as file:
+        reader = PyPDF2.PdfReader(file)
+        text = ""
+        for page in reader.pages:
+            text += page.extract_text()
+    return text
+
+# Extract text from the uploaded PDF (but do not print the text)
+_ = extract_text_from_pdf(pdf_path)  # Process dataset silently
+
+# Upload MP3 file for transcription
+print("Upload your audio file (MP3):")
+uploaded_mp3 = files.upload()  # Upload MP3 file
+mp3_path = list(uploaded_mp3.keys())[0]  # Get the filename
+
+# Load Whisper model (suppress logs)
+os.environ["TOKENIZERS_PARALLELISM"] = "false"  # Suppress parallelism warnings
+with suppress_stdout():
+    model = whisper.load_model("base")
+
+# Function to transcribe MP3 to text
+def transcribe_audio(mp3_file_path):
+    result = model.transcribe(mp3_file_path)
+    return result['text']
+
+# Convert MP3 to text
+transcribed_text = transcribe_audio(mp3_path)
+
+# Load sentiment-analysis pipeline for emotion detection
+emotion_model = pipeline("sentiment-analysis", device=-1)  # Force CPU usage quietly
+
+# Function to analyze the emotion in text
+def analyze_emotion(text):
+    result = emotion_model(text)
+    return result[0]  # Returns the sentiment label and score
+
+# Analyze the emotion of the transcribed text
+emotion_result = analyze_emotion(transcribed_text)
+
+# Display the results
+print("\n--- Transcription and Emotion Analysis ---")
+print("Transcribed Text: ", transcribed_text)
+print("Emotion Analysis Result: ", f"Label: {emotion_result['label']}, Score: {emotion_result['score']:.2f}")
+
